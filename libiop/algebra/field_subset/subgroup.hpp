@@ -5,8 +5,14 @@
  * @author     This file is part of libiop (see AUTHORS)
  * @copyright  MIT license (see LICENSE file)
  *****************************************************************************/
+
 #ifndef LIBIOP_ALGEBRA_FIELD_SUBSET_SUBGROUP_HPP_
 #define LIBIOP_ALGEBRA_FIELD_SUBSET_SUBGROUP_HPP_
+
+#ifdef _MSC_VER
+#pragma push_macro("order")
+#undef order
+#endif
 
 #include <cstddef>
 #include <vector>
@@ -25,7 +31,7 @@ protected:
     std::shared_ptr<std::vector<FieldT>> fft_cache_;
 
     FieldT g_;
-    u_long order_;
+    size_t order_; // FIX 1: Replaced non-standard u_long with size_t
 
     std::shared_ptr<libfqfft::basic_radix2_domain<FieldT>> FFT_eval_domain_;
 
@@ -41,7 +47,8 @@ public:
     multiplicative_subgroup_base(size_t order, FieldT generator);
 
     FieldT generator() const;
-    u_long order() const; // FIXME: Does it work as u_long? Or should it be a FieldT/bigint?
+    // FIX 2: Moved implementation from .tcc to prevent linker errors and updated type
+    size_t order() const { return this->order_; }
 
     std::size_t dimension() const;
     std::size_t num_elements() const;
@@ -108,4 +115,9 @@ public:
 
 #include "libiop/algebra/field_subset/subgroup.tcc"
 
+#ifdef _MSC_VER
+#pragma pop_macro("order")
+#endif
+
 #endif // LIBIOP_ALGEBRA_FIELD_SUBSET_SUBGROUP_HPP_
+

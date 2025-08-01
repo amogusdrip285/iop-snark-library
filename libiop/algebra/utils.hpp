@@ -5,6 +5,11 @@
  * @author     This file is part of libiop (see AUTHORS)
  * @copyright  MIT license (see LICENSE file)
  *****************************************************************************/
+
+#ifdef _MSC_VER
+#define __attribute__(x)
+#endif
+
 #ifndef LIBIOP_ALGEBRA_UTILS_HPP_
 #define LIBIOP_ALGEBRA_UTILS_HPP_
 

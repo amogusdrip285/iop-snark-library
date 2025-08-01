@@ -66,7 +66,7 @@ void multiplicative_subgroup_base<FieldT>::construct_internal(
 
     this->elems_ = std::make_shared<std::vector<FieldT> >();
     this->fft_cache_ = std::make_shared<std::vector<FieldT> >();
-    this->order_ = order.as_ulong();
+    this->order_ = static_cast<size_t>(order.as_ulong());
 
     if (libff::is_power_of_2(this->order_) && this->order_ > 1)
     {
@@ -87,11 +87,14 @@ FieldT multiplicative_subgroup_base<FieldT>::generator() const
     return this->g_;
 }
 
+/*
+// FIX 3: Implementation moved to hpp file to resolve LNK2001
 template<typename FieldT>
-u_long multiplicative_subgroup_base<FieldT>::order() const
+size_t multiplicative_subgroup_base<FieldT>::order() const
 {
     return this->order_;
 }
+*/
 
 template<typename FieldT>
 std::size_t multiplicative_subgroup_base<FieldT>::dimension() const
@@ -113,15 +116,15 @@ std::size_t multiplicative_subgroup_base<FieldT>::num_elements() const
 
 
 /** The FFT cache is the set of elements within the field organized in a
- *  a cache friendly way, for the multiplicative FFT access pattern. */
+ * a cache friendly way, for the multiplicative FFT access pattern. */
 template<typename FieldT>
 std::shared_ptr<std::vector<FieldT>> multiplicative_subgroup_base<FieldT>::fft_cache() const
 {
     if (this->fft_cache_->empty()) {
         /** The elements placed in the cache are all the unique powers
-         *  of g^m,
-         *  for m in the set {order / 2, order / 4, order / 8 ... }
-         *  This totals to order - 1 elements.        */
+         * of g^m,
+         * for m in the set {order / 2, order / 4, order / 8 ... }
+         * This totals to order - 1 elements.        */
         std::vector<FieldT> elems;
         elems.reserve(this->order_);
         size_t m = 1; // invariant: m = 2^{s-1}
@@ -144,16 +147,16 @@ std::shared_ptr<std::vector<FieldT>> multiplicative_subgroup_base<FieldT>::fft_c
 }
 
 /** Given an index which assumes the first elements of this subgroup are the elements of
- *  another subgroup with dimension reindex_subgroup_dim,
- *  this returns the actual index into this subgroup. */
+ * another subgroup with dimension reindex_subgroup_dim,
+ * this returns the actual index into this subgroup. */
 template<typename FieldT>
 std::size_t multiplicative_subgroup_base<FieldT>::reindex_by_subgroup(const std::size_t reindex_subgroup_dim,
                                                             const std::size_t index) const
 {
     /** Let this subgroup be G, and the subgroup we're re-indexing by be S.
-     *  Since its a subgroup, the 0th element of S is at index 0 in G, the first element of S is at
-     *  index |G|/|S|, the second at 2*|G|/|S|, etc.
-     *  Thus for an index i that correspond S, the index in G is i*|G|/|S|
+     * Since its a subgroup, the 0th element of S is at index 0 in G, the first element of S is at
+     * index |G|/|S|, the second at 2*|G|/|S|, etc.
+     * Thus for an index i that correspond S, the index in G is i*|G|/|S|
     */
    const std::size_t order_s = 1ull << reindex_subgroup_dim;
    const std::size_t order_g_over_s = 1ull << (this->dimension() - reindex_subgroup_dim);
@@ -163,11 +166,11 @@ std::size_t multiplicative_subgroup_base<FieldT>::reindex_by_subgroup(const std:
    /** Let i now be the index of this element in G \ S */
    const std::size_t i = index - order_s;
    /** Let x be the number of elements in G \ S, for every element in S. Then x = (|G|/|S| - 1).
-    *  At index i in G \ S, the number of elements in S that appear before the index in G to which
-    *  i corresponds to, is floor(i / x) + 1.
-    *  The +1 is because index 0 of G is S_0, so the position is shift by at least one.
-    *  The floor(i / x) term is because after x elements in G \ S, there is one more element from S
-    *  that will have appeared in G. */
+    * At index i in G \ S, the number of elements in S that appear before the index in G to which
+    * i corresponds to, is floor(i / x) + 1.
+    * The +1 is because index 0 of G is S_0, so the position is shift by at least one.
+    * The floor(i / x) term is because after x elements in G \ S, there is one more element from S
+    * that will have appeared in G. */
    const std::size_t x = order_g_over_s - 1;
    return i + (i / x) + 1;
 }
@@ -206,7 +209,7 @@ libfqfft::basic_radix2_domain<FieldT> multiplicative_subgroup_base<FieldT>::FFT_
 template<typename FieldT>
 bool multiplicative_subgroup_base<FieldT>::operator==(const multiplicative_subgroup_base<FieldT> &other) const
 {
-    return this->g_ == other->g_ && this->order_ == other->order_;
+    return this->g_ == other.g_ && this->order_ == other.order_;
 }
 
 template<typename FieldT>
@@ -323,7 +326,7 @@ FieldT multiplicative_coset<FieldT>::shift() const
 template<typename FieldT>
 bool multiplicative_coset<FieldT>::operator==(const multiplicative_coset<FieldT> &other) const
 {
-    return multiplicative_subgroup_base<FieldT>::operator==(other) && this->shift_ == other->shift_;
+    return multiplicative_subgroup_base<FieldT>::operator==(other) && this->shift_ == other.shift_;
 }
 
 }

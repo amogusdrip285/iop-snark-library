@@ -1,8 +1,7 @@
+# This file is located at libiop/CMakeLists.txt
 add_library(
   iop
-
   common/common.cpp
-  
   bcs/hashing/blake2b.cpp
   protocols/ldt/ldt_reducer.cpp
   protocols/ldt/fri/fri_ldt.cpp
@@ -12,26 +11,27 @@ add_library(
   algebra/utils.cpp
 )
 
-# Cmake find modules
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+# Link iop against its dependencies
+target_link_libraries(iop PUBLIC ff)
 
-find_package(sodium)
-
-target_link_libraries(
-  iop
-
-  sodium
-
-  ff
-)
-
+# CRITICAL FIX: Add the include directories for libiop itself and its dependencies.
 target_include_directories(
   iop
-
   PUBLIC
-  ../depends/libfqfft
-  ../depends/libff
+  # Add the project's root source directory to resolve includes like "libiop/common/common.hpp"
+  ${PROJECT_SOURCE_DIR}
+  # Add dependencies' include directories
+  ${PROJECT_SOURCE_DIR}/depends/libfqfft
+  ${PROJECT_SOURCE_DIR}/depends/libff
 )
+
+
+# On Windows, the gtest and benchmark libraries are not built, so we must disable the tests.
+if(NOT WIN32)
+    find_package(sodium)
+    target_link_libraries(iop PUBLIC sodium)
+
+
 
 # BENCHMARKING
 
@@ -400,3 +400,15 @@ add_test(
   NAME test_linking
   COMMAND test_linking
 )
+
+# CUSTOM TEST
+
+add_executable(custom_test tests/custom_test/custom_test.cpp)
+target_link_libraries(custom_test PUBLIC gtest gtest_main ff gmp iop)
+
+add_test(
+  NAME custom_test
+  COMMAND custom_test
+)
+
+endif()

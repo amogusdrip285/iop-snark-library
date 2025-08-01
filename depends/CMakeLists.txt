@@ -1,19 +1,23 @@
-add_subdirectory(gtest EXCLUDE_FROM_ALL)
+# This file is located at depends/CMakeLists.txt
 
-option(BENCHMARK_ENABLE_GTEST_TESTS "" OFF)
-set(BENCHMARK_ENABLE_TESTING OFF)
-add_subdirectory(benchmark)
+# On Windows, we do not build any of the submodules that conflict with vcpkg
+# or are incompatible with the MSVC compiler.
+if(NOT WIN32)
+    add_subdirectory(gtest EXCLUDE_FROM_ALL)
+    add_subdirectory(benchmark)
 
-include_directories(ate-pairing/include)
-include_directories(xbyak)
-add_library(
-        zm
-        STATIC
+    # The ate-pairing library is incompatible with MSVC.
+    include_directories(ate-pairing/include)
+    include_directories(xbyak)
+    add_library(
+            zm
+            STATIC
+            ate-pairing/src/zm.cpp
+            ate-pairing/src/zm2.cpp
+    )
+endif()
 
-        ate-pairing/src/zm.cpp
-        ate-pairing/src/zm2.cpp
-)
-
+# These are compatible and can be included on all platforms
 OPTION(IS_LIBFF_PARENT OFF)
 add_subdirectory(libff)
 
