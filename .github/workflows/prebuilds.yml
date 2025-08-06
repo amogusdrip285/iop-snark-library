@@ -39,11 +39,17 @@ jobs:
 
       - name: Install C++ Dependencies (Windows)
         if: matrix.os == 'windows-latest'
-        # Using vcpkg is the most reliable way to handle C++ dependencies for CMake on Windows
         uses: lukka/run-vcpkg@v11
         with:
+          # Explicitly tell the action where to install and run vcpkg.
+          # This avoids submodule-related checks in a clean CI environment.
+          vcpkgDirectory: '${{ runner.workspace }}/vcpkg'
+
+          # The action will use this file to install the correct dependencies.
+          vcpkgJsonGlob: '**/vcpkg.json'
+
+          # Optional: Lock to a specific vcpkg version for reproducible builds.
           vcpkgGitCommitId: '1d47DE558D321ED8379A595CEBE7563E1DE86926'
-          vcpkgJsonGlob: '**/vcpkg.json' # This will look for a vcpkg.json file
 
       # ------------------ BUILD AND PACKAGE ------------------
       - name: Install Node.js dependencies
