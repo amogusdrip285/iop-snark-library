@@ -17,6 +17,9 @@
 // libff dependencies
 #include <libff/algebra/fields/binary/gf64.hpp>
 
+//Node API
+#include <napi.h>
+
 // Define a concrete FieldType and HashType to make the code non-templated
 using FieldT = libff::gf64;
 using HashT = libiop::binary_hash_digest;
@@ -151,3 +154,103 @@ API_EXPORT void free_proof_obj(proof_handle_t* proof_handle) {
 #ifdef __cplusplus
 }
 #endif
+
+// =============================================================================
+// Node.js N-API Registration Layer
+// This part "adapts" the C-style FFI functions above for Node.js.
+// =============================================================================
+
+/**
+ * @brief N-API wrapper for generate_r1cs_proof_obj.
+ * It calls the original function and wraps the returned handle in a special
+ * JavaScript-aware object (Napi::External) that can be passed around safely.
+ */
+Napi::Value GenerateProofWrapper(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    // Call your existing C-style function
+    proof_handle_t* handle = generate_r1cs_proof_obj();
+
+    if (handle == nullptr) {
+        Napi::Error::New(env, "Proof generation failed in native library (returned null handle).").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    // This is a C++ lambda function that will be called automatically by the
+    // JavaScript garbage collector when the proof object is no longer in use.
+    // It prevents memory leaks by calling your existing free_proof_obj function.
+    auto finalizer = [](Napi::Env env, proof_handle_t* handle_to_delete) {
+        std::cout << "Node.js garbage collector is freeing the proof object." << std::endl;
+        free_proof_obj(handle_to_delete);
+    };
+
+    // Wrap the raw C++ handle in a Napi::External object and attach the finalizer.
+    return Napi::External<proof_handle_t>::New(env, handle, finalizer);
+}
+
+/**
+ * @brief N-API wrapper for verify_r1cs_proof_obj.
+ * It unwraps the handle from the Napi::External object and passes it
+ * to your original C-style verification function.
+ */
+Napi::Value VerifyProofWrapper(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsExternal()) {
+        Napi::TypeError::New(env, "A proof handle is expected as the first argument.").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    // Unwrap the proof_handle_t* from the JavaScript object.
+    proof_handle_t* handle = info[0].As<Napi::External<proof_handle_t>>().Data();
+
+    // Call your existing C-style function.
+    bool is_valid = verify_r1cs_proof_obj(handle);
+
+    // Return the result as a JavaScript boolean.
+    return Napi::Boolean::New(env, is_valid);
+}
+
+/**
+ * @brief N-API wrapper for your manual free_proof_obj function.
+ * Note: While this is provided, relying on the automatic garbage collection
+ * (the finalizer above) is generally safer to prevent memory leaks.
+ */
+void FreeProofWrapper(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+     if (info.Length() < 1 || !info[0].IsExternal()) {
+        Napi::TypeError::New(env, "A proof handle is expected as the first argument.").ThrowAsJavaScriptException();
+        return;
+    }
+
+    // Unwrap the proof_handle_t* from the JavaScript object.
+    proof_handle_t* handle = info[0].As<Napi::External<proof_handle_t>>().Data();
+    
+    // Call your existing C-style function.
+    free_proof_obj(handle);
+    
+    // Note: It's important not to use the JavaScript handle again after this,
+    // as the underlying memory is now gone.
+}
+
+
+/**
+ * @brief This `Init` function is the required entry point for the Node.js addon.
+ * It's where you define what your module exports to JavaScript.
+ */
+Napi::Object Init(Napi::Env env, Napi::Object exports) {
+    // Set the properties on the `exports` object, mapping a JS name
+    // to the N-API wrapper functions we just defined.
+    exports.Set("generate_r1cs_proof_obj", Napi::Function::New(env, GenerateProofWrapper));
+    exports.Set("verify_r1cs_proof_obj", Napi::Function::New(env, VerifyProofWrapper));
+    exports.Set("free_proof_obj", Napi::Function::New(env, FreeProofWrapper));
+
+    return exports;
+}
+
+/**
+ * @brief This macro is the magic that registers the module with Node.js,
+ * solving the "Module did not self-register" error.
+ */
+NODE_API_MODULE(addon, Init)

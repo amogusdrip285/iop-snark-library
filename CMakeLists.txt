@@ -8,26 +8,32 @@ project (libiop
   DESCRIPTION "Library for building IOP based SNARKs"
   LANGUAGES CXX C)
 
-# --- Platform-Specific Dependency Handling ---
-if(EMSCRIPTEN)
-    message(STATUS "Emscripten build: Defining placeholder variables for GMP & Libsodium.")
-    set(GMP_FOUND TRUE)
-    set(SODIUM_FOUND TRUE)
-    set(GMP_LIBRARIES "")
-    set(SODIUM_LIBRARIES "")
-else()
-    # For native builds, use PkgConfig to find libraries.
-    # This is more robust and works well with both vcpkg on Windows and apt/brew on Linux/macOS.
-    message(STATUS "Native build: Searching for system libraries using PkgConfig.")
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(GMP REQUIRED gmp)
-    pkg_check_modules(SODIUM REQUIRED libsodium)
-    include_directories(${GMP_INCLUDE_DIRS})
-    include_directories(${SODIUM_INCLUDE_DIRS})
-    # Add the library directories to the linker search path
-    link_directories(${GMP_LIBRARY_DIRS})
-    link_directories(${SODIUM_LIBRARY_DIRS})
+message(STATUS "--- Node.js Header Debugging ---")
+if(NODE_INCLUDE_DIRS)
+    message(STATUS "Found NODE_INCLUDE_DIRS: ${NODE_INCLUDE_DIRS}")
+    include_directories(${NODE_INCLUDE_DIRS})
 endif()
+if(CMAKE_JS_INC)
+    message(STATUS "Found CMAKE_JS_INC: ${CMAKE_JS_INC}")
+    include_directories(${CMAKE_JS_INC})
+endif()
+message(STATUS "--------------------------------")
+
+# --- Native Dependency Handling ---
+message(STATUS "Native build: Searching for system libraries using PkgConfig.")
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GMP REQUIRED gmp)
+pkg_check_modules(SODIUM REQUIRED libsodium)
+
+# --- Add this block to find and link Boost ---
+find_package(Boost REQUIRED COMPONENTS program_options)
+include_directories(${Boost_INCLUDE_DIRS})
+# -----------------------------------------------
+
+include_directories(${GMP_INCLUDE_DIRS})
+include_directories(${SODIUM_INCLUDE_DIRS})
+link_directories(${GMP_LIBRARY_DIRS})
+link_directories(${SODIUM_LIBRARY_DIRS})
 
 # --- Windows-Specific Fixes ---
 if(WIN32)
@@ -65,34 +71,52 @@ if(NOT MSVC)
   endif()
 endif()
 
+# Add this line to disable building the tests for the benchmark library
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable testing for benchmark" FORCE)
+
 # --- Add Subdirectories ---
 add_subdirectory(depends)
 add_subdirectory(libiop)
 
 # ===================================================================
-# Final FFI Target Configuration
+# FFI Target for Native Node.js Addon (for cmake-js)
 # ===================================================================
 
-if(EMSCRIPTEN)
-    # WebAssembly build configuration (not used for this guide)
-    # ...
-else()
-    # --- NATIVE SHARED LIBRARY BUILD ---
-    message(STATUS "Configuring Native Shared Library FFI target (libiop_ffi)")
+message(STATUS "Configuring Native Node.js Addon target")
 
-    add_library(libiop_ffi SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/ffi/libiop_ffi.cpp
-    )
+if(NOT CMAKE_JS_PLATFORM_MODULE_NAME)
+    set(CMAKE_JS_PLATFORM_MODULE_NAME "addon")
+endif()
 
-    # Link against the libraries found by PkgConfig.
-    target_link_libraries(libiop_ffi PRIVATE
-        iop
-        ff
-        ${SODIUM_LIBRARIES}
-        ${GMP_LIBRARIES}
-    )
+# Create the shared library target.
+# CMAKE_JS_PLATFORM_MODULE_NAME is a variable provided by cmake-js
+# that ensures the output file is named correctly (e.g., addon.node).
+add_library(${CMAKE_JS_PLATFORM_MODULE_NAME} SHARED
+    ${CMAKE_CURRENT_SOURCE_DIR}/ffi/libiop_ffi.cpp
+)
 
-    if(WIN32)
-        set_target_properties(libiop_ffi PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-    endif()
+set_target_properties(${CMAKE_JS_PLATFORM_MODULE_NAME} PROPERTIES
+    PREFIX ""
+    SUFFIX ".node"
+)
+
+# Add include directories
+target_include_directories(${CMAKE_JS_PLATFORM_MODULE_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/ffi
+    node_modules/node-addon-api
+    ${NODE_INCLUDE_DIRS}
+    ${CMAKE_JS_INC}
+)
+
+# Link against the libraries found by PkgConfig.
+target_link_libraries(${CMAKE_JS_PLATFORM_MODULE_NAME} PRIVATE
+    iop
+    ff
+    ${SODIUM_LIBRARIES}
+    ${GMP_LIBRARIES}
+    ${Boost_LIBRARIES}
+)
+
+if(WIN32)
+    set_target_properties(${CMAKE_JS_PLATFORM_MODULE_NAME} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
