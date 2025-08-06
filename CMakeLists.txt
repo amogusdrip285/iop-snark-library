@@ -8,16 +8,10 @@ project (libiop
   DESCRIPTION "Library for building IOP based SNARKs"
   LANGUAGES CXX C)
 
-message(STATUS "--- Node.js Header Debugging ---")
-if(NODE_INCLUDE_DIRS)
-    message(STATUS "Found NODE_INCLUDE_DIRS: ${NODE_INCLUDE_DIRS}")
-    include_directories(${NODE_INCLUDE_DIRS})
+if(DEFINED ENV{VCPKG_ROOT} AND IS_DIRECTORY $ENV{VCPKG_ROOT})
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        CACHE STRING "Vcpkg toolchain file")
 endif()
-if(CMAKE_JS_INC)
-    message(STATUS "Found CMAKE_JS_INC: ${CMAKE_JS_INC}")
-    include_directories(${CMAKE_JS_INC})
-endif()
-message(STATUS "--------------------------------")
 
 # --- Native Dependency Handling ---
 message(STATUS "Native build: Searching for system libraries using PkgConfig.")

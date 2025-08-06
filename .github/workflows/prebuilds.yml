@@ -1,0 +1,86 @@
+# .github/workflows/prebuilds.yml
+
+name: Create Pre-built Binaries
+
+# This workflow runs only when you push a new version tag (e.g., v1.2.3)
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+jobs:
+  # This job builds the binaries for Windows, macOS, and Linux
+  build_binaries:
+    strategy:
+      # Build on all three major operating systems
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js v18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # ------------------ DEPENDENCY INSTALLATION ------------------
+      - name: Install C++ Dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgmp-dev libsodium-dev libboost-all-dev
+
+      - name: Install C++ Dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install gmp libsodium boost
+
+      - name: Install C++ Dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        # Using vcpkg is the most reliable way to handle C++ dependencies for CMake on Windows
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '1d47DE558D321ED8379A595CEBE7563E1DE86926'
+          vcpkgJsonGlob: '**/vcpkg.json' # This will look for a vcpkg.json file
+
+      # ------------------ BUILD AND PACKAGE ------------------
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      - name: Build and package the native addon
+        # This runs the "package": "node-pre-gyp package" script from your package.json
+        run: npm run package
+
+      # ------------------ UPLOAD ARTIFACTS ------------------
+      # Upload the created .tar.gz file so it can be used in the next job
+      - name: Upload binary package for release
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.os }}
+          path: build/stage/*.tar.gz
+
+  # This job creates a GitHub Release and attaches all the binaries
+  create_release:
+    # This job runs only after all builds in the matrix have succeeded
+    needs: [build_binaries]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all pre-built binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Create GitHub Release and upload assets
+        # This action creates a new release and uploads all the .tar.gz files to it
+        uses: softprops/action-gh-release@v2
+        with:
+          # This makes sure the action runs only for version tags
+          fail_on_unmatched_files: true
+          # Gathers all the downloaded .tar.gz files to upload
+          files: dist/**/*.tar.gz

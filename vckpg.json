@@ -1,0 +1,9 @@
+{
+  "name": "iop-snark-library",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "gmp",
+    "libsodium",
+    "boost-program-options"
+  ]
+}
