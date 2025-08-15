@@ -31,11 +31,13 @@ link_directories(${SODIUM_LIBRARY_DIRS})
 
 # --- Windows-Specific Fixes ---
 if(WIN32)
-    # The default BN128 curve uses 'ate-pairing', which is incompatible with MSVC.
     # Force the portable ALT_BN128 curve on Windows.
     set(CURVE "ALT_BN128" CACHE STRING "Set curve to ALT_BN128 for Windows compatibility" FORCE)
     # The USE_ASM option enables GCC/Clang-specific intrinsics that fail on MSVC.
     set(USE_ASM OFF CACHE BOOL "Disable assembly on Windows for compatibility" FORCE)
+else()
+    # On non-Windows platforms, set a valid portable curve.
+    set(CURVE "ALT_BN128" CACHE STRING "Set curve to ALT_BN128 for compatibility" FORCE)
 endif()
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -65,52 +67,146 @@ if(NOT MSVC)
   endif()
 endif()
 
-# Add this line to disable building the tests for the benchmark library
-set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable testing for benchmark" FORCE)
+enable_testing()
+
+# Add back the "make check" target
+add_custom_target(check
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    DEPENDS ffi_test
+)
+
+include_directories(.)
 
 # --- Add Subdirectories ---
 add_subdirectory(depends)
+
+target_sources(ff PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/depends/libff/libff/algebra/fields/binary/gf64.cpp
+)
+
 add_subdirectory(libiop)
 
 # ===================================================================
 # FFI Target for Native Node.js Addon (for cmake-js)
 # ===================================================================
+if(CMAKE_JS_INC)
+	message(STATUS "Configuring Native Node.js Addon target")
 
-message(STATUS "Configuring Native Node.js Addon target")
+	if(NOT CMAKE_JS_PLATFORM_MODULE_NAME)
+ 	   set(CMAKE_JS_PLATFORM_MODULE_NAME "addon")
+	endif()
 
-if(NOT CMAKE_JS_PLATFORM_MODULE_NAME)
-    set(CMAKE_JS_PLATFORM_MODULE_NAME "addon")
+	# Create the shared library target.
+	# CMAKE_JS_PLATFORM_MODULE_NAME is a variable provided by cmake-js
+	# that ensures the output file is named correctly (e.g., addon.node).
+	add_library(${CMAKE_JS_PLATFORM_MODULE_NAME} SHARED
+	    ${CMAKE_CURRENT_SOURCE_DIR}/ffi/libiop_ffi.cpp
+	    ${CMAKE_CURRENT_SOURCE_DIR}/ffi/addon.cpp
+	)
+	
+	set_target_properties(${CMAKE_JS_PLATFORM_MODULE_NAME} PROPERTIES
+	    PREFIX ""
+	    SUFFIX ".node"
+	)
+	
+	# Add include directories
+	target_include_directories(${CMAKE_JS_PLATFORM_MODULE_NAME} PUBLIC
+	    ${CMAKE_CURRENT_SOURCE_DIR}/ffi
+	    ${CMAKE_CURRENT_SOURCE_DIR}/node_modules/node-addon-api
+	    ${NODE_INCLUDE_DIRS}
+	    ${CMAKE_JS_INC}
+	    ${NODE_ADDON_API_INCLUDES}
+	)
+	
+	# Link against the libraries found by PkgConfig.
+	target_link_libraries(${CMAKE_JS_PLATFORM_MODULE_NAME} PRIVATE
+	    iop
+	    ff
+	    ${SODIUM_LIBRARIES}
+	    ${GMP_LIBRARIES}
+	    ${Boost_LIBRARIES}
+	)
+	
+	if(WIN32)
+	    set_target_properties(${CMAKE_JS_PLATFORM_MODULE_NAME} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+	endif()
 endif()
 
-# Create the shared library target.
-# CMAKE_JS_PLATFORM_MODULE_NAME is a variable provided by cmake-js
-# that ensures the output file is named correctly (e.g., addon.node).
-add_library(${CMAKE_JS_PLATFORM_MODULE_NAME} SHARED
-    ${CMAKE_CURRENT_SOURCE_DIR}/ffi/libiop_ffi.cpp
-)
+# ===================================================================
+# Test Target for ffi/main_test.cpp
+# ===================================================================
 
-set_target_properties(${CMAKE_JS_PLATFORM_MODULE_NAME} PROPERTIES
-    PREFIX ""
-    SUFFIX ".node"
-)
+# Option to control whether the test executable is built
+option(BUILD_FFI_TEST "Build the main_test.cpp FFI executable" ON)
 
-# Add include directories
-target_include_directories(${CMAKE_JS_PLATFORM_MODULE_NAME} PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/ffi
-    node_modules/node-addon-api
-    ${NODE_INCLUDE_DIRS}
-    ${CMAKE_JS_INC}
-)
+if(BUILD_FFI_TEST)
+    message(STATUS "Configuring ffi_test executable target")
 
-# Link against the libraries found by PkgConfig.
-target_link_libraries(${CMAKE_JS_PLATFORM_MODULE_NAME} PRIVATE
-    iop
-    ff
-    ${SODIUM_LIBRARIES}
-    ${GMP_LIBRARIES}
-    ${Boost_LIBRARIES}
-)
+    # Define the executable target from BOTH its source files.
+    add_executable(ffi_test
+        ffi/main_test.cpp
+        ffi/libiop_ffi.cpp
+    )
 
-if(WIN32)
-    set_target_properties(${CMAKE_JS_PLATFORM_MODULE_NAME} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    # The test needs to find the libiop_ffi.h header.
+    target_include_directories(ffi_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/ffi
+    )
+
+    # Link ffi_test directly against its C++ dependencies.
+    # We DO NOT link against addon.node here.
+    target_link_libraries(ffi_test PRIVATE
+        iop
+        ff
+        ${SODIUM_LIBRARIES}
+        ${GMP_LIBRARIES}
+        ${Boost_LIBRARIES}
+    )
 endif()
+
+# ===================================================================
+# Shared library target for Go cgo integration
+# ===================================================================
+
+option(BUILD_GO_FFI "Build Go FFI shared library" ON)
+
+if(BUILD_GO_FFI)
+    message(STATUS "Configuring zkffi_wrapper shared library target for Go")
+
+    add_library(zkffi_wrapper SHARED
+        ffi_cgo/zk_c_api.cpp
+        ffi/libiop_ffi.cpp
+    )
+
+    target_include_directories(zkffi_wrapper PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/ffi
+        ${CMAKE_CURRENT_SOURCE_DIR}/ffi_cgo
+    )
+
+    target_link_libraries(zkffi_wrapper PRIVATE
+        iop
+        ff
+        ${SODIUM_LIBRARIES}
+        ${GMP_LIBRARIES}
+        ${Boost_LIBRARIES}
+        stdc++ pthread
+    )
+
+    # On Unix, will output libzkffi_wrapper.so in build dir
+    # On Windows, will output zkffi_wrapper.dll
+    if(WIN32)
+        set_target_properties(zkffi_wrapper PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
+	# Install the shared library system-wide
+	install(TARGETS zkffi_wrapper
+	    LIBRARY DESTINATION /usr/local/lib
+	)
+
+	# Optional: also install the header so Go FFI can include it
+	install(FILES ${CMAKE_SOURCE_DIR}/libiop/zk_c_api.h
+	    DESTINATION /usr/local/include
+	)
+endif()
+
+

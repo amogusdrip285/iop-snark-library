@@ -6,7 +6,7 @@
   "private": false,
   "gypfile": false,
   "scripts": {
-    "install": "node-pre-gyp install --fallback-to-build",
+    "install": "node-pre-gyp install || npm run build",
     "build": "cmake-js build",
     "package": "node-pre-gyp package"
   },
